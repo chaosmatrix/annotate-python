@@ -27,6 +27,12 @@ get_list_state(void)
     return &interp->list;
 }
 
+// Annotation:
+// 1. list.append or list.extend will call this function to resize
+// 2. wne old_allocated large enough: new_allocated ~= old_allocated * (9 / 8)
+// 3. when old_allocated size is large, will wast more memory.
+// 4. Notice: the only way to recycle unused/free allocated size is duplicating new list (O(n))
+// 5. by pre-allocated, the performance of functions like list.append() and list.extend() can be increased
 
 /* Ensure ob_item has room for at least newsize elements, and set
  * ob_size to newsize.  If newsize > ob_size on entry, the content
@@ -88,6 +94,11 @@ list_resize(PyListObject *self, Py_ssize_t newsize)
     self->allocated = new_allocated;
     return 0;
 }
+
+// Annotation:
+// 1. normally, this only use when create new list, for example BINARY_* ops
+// 2. the INPLACE_* in list not create new list, will call "list_resize" to allocate memory
+// 3. normally, the allocated size of this function less than the size of "list_resize" allocated
 
 static int
 list_preallocate_exact(PyListObject *self, Py_ssize_t size)
@@ -297,6 +308,11 @@ ins1(PyListObject *self, Py_ssize_t where, PyObject *v)
     return 0;
 }
 
+// Annotation:
+// 1. function: list.insert(index, value)
+// 2. list.insert(index, value) = l[:where] += [value] + l[where:]
+// 3. time: O(N-index)
+
 int
 PyList_Insert(PyObject *op, Py_ssize_t where, PyObject *newitem)
 {
@@ -321,6 +337,10 @@ app1(PyListObject *self, PyObject *v)
     PyList_SET_ITEM(self, n, v);
     return 0;
 }
+
+// Annotation:
+// 1. function: list.append(value)
+// 2. Time: O(1)
 
 int
 PyList_Append(PyObject *op, PyObject *newitem)
@@ -363,6 +383,11 @@ list_dealloc(PyListObject *op)
     }
     Py_TRASHCAN_END
 }
+
+// Annotation:
+// 1. function: repr(list) euqal with str(list)
+// 2. Time: O(N)
+// 3. Space: O(N)
 
 static PyObject *
 list_repr(PyListObject *v)
@@ -426,6 +451,10 @@ list_length(PyListObject *a)
     return Py_SIZE(a);
 }
 
+// Annotation:
+// 1. function: list.__contain__(value) equal with "value in list"
+// 2. Time: 0(N)
+
 static int
 list_contains(PyListObject *a, PyObject *el)
 {
@@ -441,6 +470,10 @@ list_contains(PyListObject *a, PyObject *el)
     }
     return cmp;
 }
+
+// Annotation:
+// 1. function: list[index]
+// 2. Time: 0(1)
 
 static PyObject *
 list_item(PyListObject *a, Py_ssize_t i)
@@ -458,6 +491,11 @@ list_item(PyListObject *a, Py_ssize_t i)
     Py_INCREF(a->ob_item[i]);
     return a->ob_item[i];
 }
+
+// Annotation:
+// 1. function: l = l[ilow:ihigh]
+// 2. Time: O(ihigh-ilow+1)
+// 3. Tips: can be use to shrink list, to free allocated bu unused memory
 
 static PyObject *
 list_slice(PyListObject *a, Py_ssize_t ilow, Py_ssize_t ihigh)
@@ -506,6 +544,11 @@ PyList_GetSlice(PyObject *a, Py_ssize_t ilow, Py_ssize_t ihigh)
     return list_slice((PyListObject *)a, ilow, ihigh);
 }
 
+// Annotation:
+// 1. function: list.__add__(value) equal with l = l1 + l2
+// 2. Time: O(M+N)
+// 3. Space: >= O(M+N), can be used to shrink list (l = l + [])
+
 static PyObject *
 list_concat(PyListObject *a, PyObject *bb)
 {
@@ -548,6 +591,12 @@ list_concat(PyListObject *a, PyObject *bb)
 #undef b
 }
 
+// Annotation:
+// 1. function: list.__mul__(value) equal with l = l * value
+// 2. Time: O(N*value)
+// 3. Space: O(N*value), can be used to shrink list (l = l * 1)
+// 4. Notice: when value <= 0, create new empty list
+
 static PyObject *
 list_repeat(PyListObject *a, Py_ssize_t n)
 {
@@ -589,6 +638,11 @@ list_repeat(PyListObject *a, Py_ssize_t n)
     Py_SET_SIZE(np, size);
     return (PyObject *) np;
 }
+
+// Annotation:
+// 1. function: list.clear()
+// 2. Time: O(N)
+// 3. difference with l = [] : free memory immedialy
 
 static int
 _list_clear(PyListObject *a)
@@ -734,6 +788,12 @@ PyList_SetSlice(PyObject *a, Py_ssize_t ilow, Py_ssize_t ihigh, PyObject *v)
     }
     return list_ass_slice((PyListObject *)a, ilow, ihigh, v);
 }
+
+// Annotation:
+// 1. function: list.__imul__(value) equal with l *= value
+// 2. Time: O(N*(value-1))
+// 3. Space: >= 0(N*(value-1))
+// 4. when value < 1, call list.clear() free memory
 
 static PyObject *
 list_inplace_repeat(PyListObject *self, Py_ssize_t n)
@@ -993,6 +1053,11 @@ _PyList_Extend(PyListObject *self, PyObject *iterable)
 {
     return list_extend(self, iterable);
 }
+
+// Annotation:
+// 1. function: list.__iadd__(value) equal with l += [value]
+// 2. Time: O(M)
+// 3. list.extend(value) do the work actually
 
 static PyObject *
 list_inplace_concat(PyListObject *self, PyObject *other)
@@ -2569,6 +2634,10 @@ list_index_impl(PyListObject *self, PyObject *value, Py_ssize_t start,
     PyErr_Format(PyExc_ValueError, "%R is not in list", value);
     return NULL;
 }
+
+// Annotation:
+// 1. function: list.count(value)
+// 2. Time: O(N)
 
 /*[clinic input]
 list.count
